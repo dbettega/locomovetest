@@ -180,6 +180,8 @@ html,body{
 .bativo{font-family:var(--ft);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:3px 9px;border-radius:100px;background:rgba(40,167,69,.18);color:var(--verde);border:1px solid rgba(40,167,69,.3);white-space:nowrap}
 .benc{font-family:var(--ft);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:3px 9px;border-radius:100px;background:var(--faint);color:var(--dim);border:1px solid var(--borda);white-space:nowrap}
 .aeb{background:transparent;border:1px solid var(--borda);color:var(--dim);border-radius:7px;padding:5px 8px;font-size:13px;cursor:pointer;transition:all .2s}
+.aeb-inscritos{background:var(--faint);border:1px solid var(--borda);color:var(--verde);border-radius:100px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-top:8px;transition:all .2s}
+.aeb-inscritos:hover{background:rgba(62,207,92,.15);border-color:var(--verde)}
 .aeb:hover{border-color:var(--verde);color:var(--verde)}
 .aeb.del:hover{border-color:#f87171;color:#f87171}
 .trio{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
@@ -456,6 +458,7 @@ const BANNER_SRC = 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1
 
 let eventos = [];
 let eventosAdmin = [];
+let inscricoesAdmin = [];
 
 /* Busca TODOS os eventos (ativos e encerrados) — só pro painel Admin.
    Diferente de carregarEventos(), que só traz ativos (usada na tela pública). */
@@ -471,6 +474,23 @@ async function carregarEventosAdminLista(){
       ativo:String(i.Ativo).toLowerCase()==='true'
     }));
   }catch(e){ console.warn('eventosAdmin:',e); }
+}
+
+/* Busca TODAS as inscrições de todos os eventos — só pro painel Admin. */
+async function carregarInscricoesAdmin(){
+  if(!API_URL) return;
+  try{
+    const data=await apiGet({action:'inscricoes'});
+    inscricoesAdmin=(data||[]).map(i=>({
+      id:i.ID, eventoId:i.EventoId, eventoNome:i.EventoNome||'',
+      cs:i.CS||'', area:i.Area||'', modalidade:i.Modalidade||'',
+      telefone:i.Telefone||'', status:i.Status||'',
+      dataInscricao:i.DataInscricao||'', dataCheckin:i.DataCheckin||''
+    }));
+  }catch(e){ console.warn('inscricoesAdmin:',e); }
+}
+function inscritosDoEvento(eventoId){
+  return inscricoesAdmin.filter(i=>String(i.eventoId)===String(eventoId));
 }
 function setStatus(ctx, state, txt){
   const dot  = document.getElementById(ctx==='adm'?'api-dot-adm':'api-dot');
@@ -895,7 +915,7 @@ function carregarCfgAdmin(){
 }
 async function carregarEventosAdmin(){
   renderAdmEventos();
-  await carregarEventosAdminLista();
+  await Promise.all([carregarEventosAdminLista(), carregarInscricoesAdmin()]);
   renderAdmEventos();
 }
 
@@ -925,13 +945,18 @@ function renderAdmEventos(){
           })
       : '—';
 
+    const totalInscritos = inscritosDoEvento(e.spId||id).length;
+
     return `
-    <div class="aei">
-      <div style="flex:1">
+    <div class="aei" style="flex-wrap:wrap">
+      <div style="flex:1;min-width:150px">
         <div class="aei-nome">${nome}</div>
         <div class="aei-meta">
           ${dFmt} · ${hora || '—'} · ${local || '—'}
         </div>
+        <button class="aeb-inscritos" onclick="mostrarInscritos('${e.spId||id}','${(nome||'').replace(/'/g,"\\'")}')">
+          👥 ${totalInscritos} inscrito${totalInscritos===1?'':'s'}
+        </button>
       </div>
 
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
@@ -996,6 +1021,60 @@ function mostrarQR(eventoId, nomeEvento){
       <button class="btn-voltar" style="flex:1" onclick="this.closest('.pin-ov').remove()">Fechar</button>
     </div>`;
   document.getElementById('tela-admin').appendChild(ov);
+}
+
+/* ── Lista de inscritos por evento ── */
+function escHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function mostrarInscritos(eventoId, nomeEvento){
+  const lista = inscritosDoEvento(eventoId);
+  const ov=document.createElement('div');
+  ov.className='pin-ov';
+  ov.style.zIndex='200';
+  ov.style.justifyContent='flex-start';
+  ov.style.paddingTop='50px';
+  ov.dataset.eventoId=eventoId;
+  ov.dataset.eventoNome=nomeEvento||'';
+
+  const linhas = lista.length ? lista.map(i => `
+    <div style="background:var(--azul2);border:1px solid var(--borda);border-radius:10px;padding:10px 12px;margin-bottom:8px;text-align:left">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span style="font-family:var(--ft);font-size:15px;font-weight:800">CS ${escHtml(i.cs)}</span>
+        <span class="${i.dataCheckin ? 'bativo' : 'benc'}" style="font-size:9px">
+          ${i.dataCheckin ? '✓ presente' : i.status || 'Confirmado'}
+        </span>
+      </div>
+      <div style="font-size:12px;color:var(--dim);margin-top:3px">
+        ${escHtml(i.area)} · ${escHtml(i.modalidade)}${i.telefone ? ' · '+escHtml(i.telefone) : ''}
+      </div>
+    </div>`).join('')
+    : `<p style="font-size:13px;color:var(--dim);text-align:center;padding:20px 0">Nenhum inscrito ainda.</p>`;
+
+  ov.innerHTML=`
+    <div class="pin-t" style="font-size:22px">Inscritos</div>
+    <p class="pin-s">${escHtml(nomeEvento)} · ${lista.length} inscrito${lista.length===1?'':'s'}</p>
+    <div style="width:90%;max-width:380px;max-height:52vh;overflow-y:auto;margin-bottom:16px">${linhas}</div>
+    <div style="display:flex;gap:10px;width:90%;max-width:380px">
+      <button class="btn-p" style="flex:1" onclick="baixarCSVInscritos('${eventoId}','${(nomeEvento||'').replace(/'/g,"\\'")}')"><span class="btxt">Baixar CSV</span><div class="spin"></div></button>
+      <button class="btn-voltar" style="flex:1" onclick="this.closest('.pin-ov').remove()">Fechar</button>
+    </div>`;
+  document.getElementById('tela-admin').appendChild(ov);
+}
+function baixarCSVInscritos(eventoId, nomeEvento){
+  const lista = inscritosDoEvento(eventoId);
+  const linhas = [['CS','Área','Modalidade','Telefone','Status','Check-in'].join(';')];
+  lista.forEach(i => {
+    linhas.push([i.cs, i.area, i.modalidade, i.telefone, i.status, i.dataCheckin ? 'Presente' : 'Não']
+      .map(v => String(v ?? '').replace(/;/g,',')).join(';'));
+  });
+  const blob = new Blob([linhas.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `inscritos_${(nomeEvento||'evento').replace(/[^a-z0-9]+/gi,'_')}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 async function criarEvento(){

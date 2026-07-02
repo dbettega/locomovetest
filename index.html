@@ -536,7 +536,9 @@ async function carregarEventos(){
   setStatus('form','spin','Carregando eventos...');
   try{
     const data=await apiGet({action:'eventos'});
-    if(data&&data.length){
+    if(data){
+      // Atualiza sempre (mesmo lista vazia) — se não, pausar o último evento
+      // ativo deixava a tela pública mostrando o card antigo (dado obsoleto).
       eventos=data.map(i=>({
         id:i.ID||'sp-'+Math.random(), spId:i.ID,
         nome:i.Nome||'', tipo:i.Tipo||'Corrida e Caminhada',

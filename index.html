@@ -286,6 +286,55 @@ html,body{
     </div>
   </div>
 
+  <!-- TELA CHECKIN: PARTICIPANTE (via QR Code) -->
+  <div class="tela" id="tela-checkin">
+    <div class="hdr">
+      <button class="back" onclick="irPara('tela-eventos')">‹</button>
+      <div>
+        <div class="hdr-nome">Check-in</div>
+        <div class="hdr-meta" id="ci-evt-meta">—</div>
+      </div>
+    </div>
+    <div class="scroll">
+      <div class="form-body">
+
+        <!-- Estado: formulário de CS -->
+        <div id="ci-form-wrap">
+          <div class="evt-hero" style="padding:0 0 18px">
+            <div class="evt-lbl">Confirme sua presença</div>
+            <div class="evt-titulo" id="ci-evt-nome" style="font-size:22px">—</div>
+          </div>
+          <div class="alert-err" id="ci-alert-err"></div>
+          <div class="field">
+            <label>CS <span class="req">*</span></label>
+            <input type="text" id="ci-cs" placeholder="Digite seu CS" inputmode="numeric">
+          </div>
+          <button class="btn-p" id="ci-btn-confirmar" onclick="confirmarCheckin()">
+            <span class="btxt">Confirmar presença</span>
+            <div class="spin"></div>
+          </button>
+        </div>
+
+        <!-- Estado: sucesso -->
+        <div id="ci-sucesso-wrap" style="display:none;text-align:center;padding-top:20px">
+          <div class="suc-check">✓</div>
+          <div class="suc-titulo" style="font-size:34px">Presença confirmada!</div>
+          <p class="suc-sub" id="ci-suc-nome" style="margin-top:8px">—</p>
+          <button class="btn-voltar" style="margin-top:24px" onclick="irPara('tela-eventos')">← Voltar aos eventos</button>
+        </div>
+
+        <!-- Estado: já fez check-in -->
+        <div id="ci-jafeito-wrap" style="display:none;text-align:center;padding-top:20px">
+          <div class="suc-check" style="background:var(--faint);color:var(--verde)">✓</div>
+          <div class="suc-titulo" style="font-size:28px">Você já fez check-in</div>
+          <p class="suc-sub" id="ci-jafeito-hora" style="margin-top:8px">—</p>
+          <button class="btn-voltar" style="margin-top:24px" onclick="irPara('tela-eventos')">← Voltar aos eventos</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- TELA 4: ADMIN -->
   <div class="tela" id="tela-admin" style="position:relative">
     <div class="pin-ov" id="pin-ov">
@@ -374,8 +423,11 @@ html,body{
 /* ══════════════════════════════════════════
    CONFIGURAÇÃO
 ══════════════════════════════════════════ */
-let API_URL = localStorage.getItem('lm_api_url') || '';
+// URL padrão fixa do Apps Script
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzsA4QHhYgKeZET21CzDMrGLUwBvIGmarB8ug1vAz9glQAipKYK8NR8mBQMc1dSKTtp3A/exec';
 
+// Carrega do localStorage ou usa a padrão
+let API_URL = localStorage.getItem('lm_api_url') || DEFAULT_API_URL;
 const PIN = '1234';
 let pinBuf='', adminOk=false, eventoAtual=null, dadosInsc=null, aceite=false;
 
@@ -492,14 +544,25 @@ async function testarAPI(){
 }
 
 function salvarApiUrl(){
-  API_URL=document.getElementById('cfg-api-url').value.trim();
-  localStorage.setItem('lm_api_url', API_URL);
+
+  const novaUrl =
+    document.getElementById('cfg-api-url')
+    .value
+    .trim();
+
+  // Se vazio → volta pra padrão
+  API_URL = novaUrl || DEFAULT_API_URL;
+
+  localStorage.setItem(
+    'lm_api_url',
+    API_URL
+  );
 }
 
 /* ── Navegação ── */
 function irPara(id){
   document.querySelectorAll('.tela').forEach(t=>{t.classList.remove('ativa');t.style.display='none';});
-  const sem=['tela-form','tela-sucesso','tela-admin'];
+  const sem=['tela-form','tela-sucesso','tela-admin','tela-checkin'];
   document.getElementById('topbar').style.display=sem.includes(id)?'none':'';
   const t=document.getElementById(id); t.style.display='flex'; t.classList.add('ativa');
   const s=t.querySelector('.scroll'); if(s) s.scrollTop=0;
@@ -681,6 +744,98 @@ function mostrarSucesso(){
   irPara('tela-sucesso');
 }
 
+/* ══════════════════════════════════════════
+   CHECK-IN DO PARTICIPANTE (via QR Code)
+══════════════════════════════════════════ */
+let checkinEventoAtual = null;
+
+function detectarQRCheckin(){
+  const params = new URLSearchParams(location.search);
+  const eid = params.get('checkin');
+  if(eid) iniciarCheckin(eid);
+}
+
+async function iniciarCheckin(eventoId){
+  irPara('tela-checkin');
+  document.getElementById('ci-form-wrap').style.display='';
+  document.getElementById('ci-sucesso-wrap').style.display='none';
+  document.getElementById('ci-jafeito-wrap').style.display='none';
+  document.getElementById('ci-evt-nome').textContent='Carregando evento...';
+  document.getElementById('ci-evt-meta').textContent='—';
+  document.getElementById('ci-cs').value='';
+  document.getElementById('ci-alert-err').classList.remove('on');
+
+  // Tenta achar localmente primeiro
+  let evt = eventos.find(e => String(e.spId||e.id) === String(eventoId));
+
+  if(!evt && API_URL){
+    try{
+      const data = await apiGet({action:'eventoPorId', id:eventoId});
+      if(data){
+        evt = {
+          spId: data.ID, id: data.ID,
+          nome: data.Nome||'', data: (data.Data||'').substring(0,10),
+          hora: parseHora(data.Hora), local: data.Local||''
+        };
+      }
+    }catch(e){ console.warn('eventoPorId:', e); }
+  }
+
+  if(!evt){
+    document.getElementById('ci-evt-nome').textContent='Evento não encontrado';
+    document.getElementById('ci-evt-meta').textContent='Verifique o QR Code ou tente novamente';
+    return;
+  }
+
+  checkinEventoAtual = evt;
+  document.getElementById('ci-evt-nome').textContent = evt.nome;
+  const dFmt = evt.data ? new Date(evt.data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'}) : '';
+  document.getElementById('ci-evt-meta').textContent = `${dFmt}${evt.hora?' · '+evt.hora:''}${evt.local?' · '+evt.local:''}`;
+}
+
+async function confirmarCheckin(){
+  const cs = document.getElementById('ci-cs').value.trim();
+  const errEl = document.getElementById('ci-alert-err');
+  errEl.classList.remove('on');
+
+  if(!cs){ errEl.textContent='Digite seu CS.'; errEl.classList.add('on'); return; }
+  if(!checkinEventoAtual){ errEl.textContent='Evento inválido.'; errEl.classList.add('on'); return; }
+  if(!API_URL){ errEl.textContent='Check-in indisponível no momento.'; errEl.classList.add('on'); return; }
+
+  const btn=document.getElementById('ci-btn-confirmar');
+  btn.classList.add('loading'); btn.disabled=true;
+
+  try{
+    const eventoId = checkinEventoAtual.spId||checkinEventoAtual.id;
+    const resultado = await apiGet({action:'checkin', eventoId, cs});
+
+    btn.classList.remove('loading'); btn.disabled=false;
+
+    if(resultado.status === 'nao_inscrito'){
+      errEl.textContent = `CS ${cs} não está inscrito neste evento.`;
+      errEl.classList.add('on');
+      return;
+    }
+
+    if(resultado.status === 'ja_checkin'){
+      document.getElementById('ci-form-wrap').style.display='none';
+      document.getElementById('ci-jafeito-wrap').style.display='';
+      const h = resultado.dataCheckin ? new Date(resultado.dataCheckin).toLocaleString('pt-BR') : '';
+      document.getElementById('ci-jafeito-hora').textContent = h ? `Registrado em ${h}` : '';
+      return;
+    }
+
+    // sucesso
+    document.getElementById('ci-form-wrap').style.display='none';
+    document.getElementById('ci-sucesso-wrap').style.display='';
+    document.getElementById('ci-suc-nome').textContent = `CS ${cs} · ${checkinEventoAtual.nome}`;
+  }catch(e){
+    btn.classList.remove('loading'); btn.disabled=false;
+    errEl.textContent = e.message || 'Erro ao confirmar presença.';
+    errEl.classList.add('on');
+  }
+}
+
 /* ── Admin PIN ── */
 function abrirAdmin(){
   irPara('tela-admin');
@@ -695,9 +850,18 @@ function verificarPin(){
   else{document.querySelectorAll('.pin-dot').forEach(d=>d.classList.add('shake'));setTimeout(()=>{pinBuf='';atualizarDots();document.querySelectorAll('.pin-dot').forEach(d=>d.classList.remove('shake'));},400);}
 }
 function carregarCfgAdmin(){
-  API_URL=localStorage.getItem('lm_api_url')||'';
-  document.getElementById('cfg-api-url').value=API_URL;
-  setStatus('adm',API_URL?'ok':'err',API_URL?'URL configurada':'Cole a URL do Apps Script');
+
+  API_URL =
+    localStorage.getItem('lm_api_url') ||
+    DEFAULT_API_URL;
+
+  document.getElementById('cfg-api-url').value = API_URL;
+
+  setStatus(
+    'adm',
+    'ok',
+    'URL configurada'
+  );
 }
 async function carregarEventosAdmin(){
   renderAdmEventos();
@@ -749,6 +913,10 @@ function renderAdmEventos(){
         </span>
 
         <div style="display:flex;gap:6px">
+          <button class="aeb" onclick="mostrarQR('${e.spId||id}','${(nome||'').replace(/'/g,"\\'")}')" title="Gerar QR Code de check-in">
+            🔳
+          </button>
+
           <button class="aeb" onclick="toggleEvt('${id}','${e.spId||''}')">
             ${ativo ? '⏸' : '▶'}
           </button>
@@ -772,6 +940,32 @@ async function toggleEvt(id, spId){
   renderAdmEventos(); renderEventos();
 }
 function delEvtLocal(id){if(!confirm('Remover localmente?'))return;eventos=eventos.filter(e=>e.id!==id);renderAdmEventos();renderEventos();}
+
+/* ── QR Code de Check-in ── */
+function urlCheckin(eventoId){
+  const base=location.origin+location.pathname;
+  return `${base}?checkin=${encodeURIComponent(eventoId)}`;
+}
+function mostrarQR(eventoId, nomeEvento){
+  const url=urlCheckin(eventoId);
+  const qrImg='https://api.qrserver.com/v1/create-qr-code/?size=320x320&data='+encodeURIComponent(url);
+  const ov=document.createElement('div');
+  ov.className='pin-ov';
+  ov.style.zIndex='200';
+  ov.innerHTML=`
+    <div class="pin-t" style="font-size:24px">QR Check-in</div>
+    <p class="pin-s">${nomeEvento||''}</p>
+    <img src="${qrImg}" alt="QR Code" style="width:220px;height:220px;border-radius:14px;background:white;padding:10px;margin-bottom:18px">
+    <div class="url-box" style="width:88%;max-width:320px;margin-bottom:14px">
+      <div class="url-box-lbl">Link de check-in</div>
+      <input type="text" readonly value="${url}" onclick="this.select()">
+    </div>
+    <div style="display:flex;gap:10px;width:88%;max-width:320px">
+      <button class="btn-p" style="flex:1" onclick="window.open('${qrImg}','_blank')"><span class="btxt">Abrir imagem</span><div class="spin"></div></button>
+      <button class="btn-voltar" style="flex:1" onclick="this.closest('.pin-ov').remove()">Fechar</button>
+    </div>`;
+  document.getElementById('tela-admin').appendChild(ov);
+}
 
 async function criarEvento(){
   const nome=document.getElementById('a-nome').value.trim();
@@ -813,6 +1007,7 @@ document.getElementById('tela-eventos').style.display='flex';
 document.getElementById('tela-eventos').classList.add('ativa');
 renderEventos();
 if(API_URL) carregarEventos();
+detectarQRCheckin();
 </script>
 </body>
 </html>

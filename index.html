@@ -572,7 +572,7 @@ async function carregarEventosAdminLista(){
     const data=await apiGet({action:'eventosAdmin'});
     eventosAdmin=(data||[]).map(i=>({
       id:i.ID, spId:i.ID,
-      nome:i.Nome||'', tipo:i.Tipo||'Corrida e Caminhada',
+      nome:String(i.Nome??''), tipo:i.Tipo||'Corrida e Caminhada',
       data:(i.Data||'').substring(0,10),
       hora:parseHora(i.Hora), local:i.Local||'',
       ativo:String(i.Ativo).toLowerCase()==='true'
@@ -665,7 +665,7 @@ async function carregarEventos(){
       // ativo deixava a tela pública mostrando o card antigo (dado obsoleto).
       eventos=data.map(i=>({
         id:i.ID||'sp-'+Math.random(), spId:i.ID,
-        nome:i.Nome||'', tipo:i.Tipo||'Corrida e Caminhada',
+        nome:String(i.Nome??''), tipo:i.Tipo||'Corrida e Caminhada',
         data:(i.Data||'').substring(0,10),
         hora:parseHora(i.Hora), local:i.Local||'', cidade:i.Cidade||'',
         desc:i.Descricao||'', slogan:i.Slogan||'',
@@ -1168,7 +1168,7 @@ function renderAdmEventos(){
   el.innerHTML = eventosAdmin.map(e => {
 
     const id     = e.id     || e.ID;
-    const nome   = e.nome   || e.Nome;
+    const nome   = String(e.nome ?? e.Nome ?? '');
     const data   = e.data   || e.Data;
     const hora   = e.hora   || e.Hora;
     const local  = e.local  || e.Local;

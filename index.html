@@ -241,7 +241,7 @@ html,body{
         <div class="alert-err" id="alert-err"></div>
         <div class="field">
           <label>CS <span class="req">*</span></label>
-          <input type="text" id="f-nome" placeholder="Seu CS">
+          <input type="text" id="f-nome" placeholder="Seu CS" inputmode="numeric" oninput="apenasNumeros(this)">
         </div>
         <div class="field">
           <label>Área <span class="req">*</span></label>
@@ -312,7 +312,7 @@ html,body{
 
         <div class="field">
           <label>CS <span class="req">*</span></label>
-          <input type="text" id="cad-cs" placeholder="Digite seu CS" inputmode="numeric" onblur="buscarCadastro()">
+          <input type="text" id="cad-cs" placeholder="Digite seu CS" inputmode="numeric" oninput="apenasNumeros(this)" onblur="buscarCadastro()">
         </div>
         <div class="sp-chip" id="cad-status" style="display:none">
           <div class="sp-dot" id="cad-status-dot"></div>
@@ -389,7 +389,7 @@ html,body{
           <div class="alert-err" id="ci-alert-err"></div>
           <div class="field">
             <label>CS <span class="req">*</span></label>
-            <input type="text" id="ci-cs" placeholder="Digite seu CS" inputmode="numeric">
+            <input type="text" id="ci-cs" placeholder="Digite seu CS" inputmode="numeric" oninput="apenasNumeros(this)">
           </div>
           <button class="btn-p" id="ci-btn-confirmar" onclick="confirmarCheckin()">
             <span class="btxt">Confirmar presença</span>
@@ -537,6 +537,18 @@ const LM_OFFLINE_KEY = storageKey('lm_offline');
 let API_URL = localStorage.getItem(LM_API_URL_KEY) || DEFAULT_API_URL;
 const PIN = '1234';
 let pinBuf='', adminOk=false, eventoAtual=null, dadosInsc=null, aceite=false;
+
+// Filtra o campo de CS pra só aceitar dígitos, em tempo real —
+// evita gente digitando "CS294705" numa tela e "294705" em outra
+// (isso já é tolerado no backend também, mas aqui evita de vez).
+function apenasNumeros(el){
+  const cursor = el.selectionStart;
+  const antes = el.value.length;
+  el.value = el.value.replace(/\D/g, '');
+  const depois = el.value.length;
+  // ajusta a posição do cursor descontando os caracteres removidos antes dele
+  if(cursor !== null) el.setSelectionRange(cursor - (antes - depois), cursor - (antes - depois));
+}
 
 const ICONES = {'Corrida':'🏃','Caminhada':'🚶','Bike':'🚴','Natação':'🏊',
   'Beach Tênis':'🎾','Vôlei':'🏐','Futebol':'⚽','Corrida e Caminhada':'🏃'};
